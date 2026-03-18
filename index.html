@@ -6,6 +6,8 @@
 <title>Comisiones · Abril Grupo Inmobiliario</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"></script>
 <style>
 :root{
   --blue:#1565A8;--blue-dark:#0d4a7a;--blue-mid:#1a74c0;--blue-light:#e8f1fb;--blue-xlight:#f0f6ff;
@@ -358,6 +360,10 @@ tbody tr:hover td{background:var(--blue-xlight)}
 
 <script>
 const K={rows:'abril_ops',lists:'abril_lists'};
+
+// ── FIREBASE (listas compartidas) ──
+firebase.initializeApp({databaseURL:'https://abril-comisiones-default-rtdb.firebaseio.com'});
+const db=firebase.database();
 const ADMIN_PIN='1234'; // ← CAMBIA ESTE PIN
 let rows=[],isAdmin=false;
 let lists={
@@ -372,9 +378,24 @@ const YEARS=[2026,2027,2028,2029];
 
 function init(){
   try{const r=localStorage.getItem(K.rows);if(r)rows=JSON.parse(r);}catch(e){rows=[];}
-  try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
   document.getElementById('current-date').textContent=new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  populateAll();updateStorageInfo();renderMisOps();
+  // Load shared lists from Firebase, fall back to localStorage if offline
+  db.ref('abril_listas').on('value', snap=>{
+    const data=snap.val();
+    if(data && typeof data==='object'){
+      lists=data;
+      // persist locally as fallback
+      try{localStorage.setItem(K.lists,JSON.stringify(lists));}catch(e){}
+    } else {
+      // no Firebase data yet — try localStorage fallback
+      try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
+    }
+    populateAll();renderTags();updateStorageInfo();renderMisOps();
+  }, err=>{
+    // offline fallback
+    try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
+    populateAll();renderTags();updateStorageInfo();renderMisOps();
+  });
 }
 
 function saveRows(){localStorage.setItem(K.rows,JSON.stringify(rows));updateStorageInfo();renderMisOps();}
@@ -414,7 +435,11 @@ function exportMisOps(){
   XLSX.writeFile(makeWB(myRows.map(rowArr),'Mis Operaciones'),`Abril_Comisiones_${nombre.replace(/ /g,'_')}.xlsx`);
   toast('Excel descargado','success');
 }
-function saveLists(){localStorage.setItem(K.lists,JSON.stringify(lists));}
+function saveLists(){
+  // Save to Firebase (shared) + localStorage (fallback)
+  db.ref('abril_listas').set(lists).catch(e=>console.warn('Firebase write error',e));
+  try{localStorage.setItem(K.lists,JSON.stringify(lists));}catch(e){}
+}
 
 function updateStorageInfo(){
   const meses=[...new Set(rows.map(r=>r.mes))];
