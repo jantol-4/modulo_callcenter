@@ -192,7 +192,7 @@ tbody tr:hover td{background:var(--blue-xlight)}
   <div class="card">
     <div class="card-header">Identificación</div>
     <div class="g3">
-      <div class="field"><label>Ejecutivo que reporta <span class="req">*</span></label><select id="f-ejecutivo"><option value="">Seleccionar...</option></select></div>
+      <div class="field"><label>Ejecutivo que reporta <span class="req">*</span></label><select id="f-ejecutivo" onchange="renderMisOps()"><option value="">Seleccionar...</option></select></div>
       <div class="field"><label>Mes de pago de comisión <span class="req">*</span></label><select id="f-mes"><option value="">Seleccionar...</option></select></div>
       <div class="field"><label>Fecha de firma de minuta <span class="req">*</span></label><input type="date" id="f-fecha-minuta"></div>
     </div>
@@ -236,6 +236,22 @@ tbody tr:hover td{background:var(--blue-xlight)}
         Registrar operación
       </button>
     </div>
+  </div>
+
+  <!-- MIS OPERACIONES -->
+  <div class="card" id="mis-ops-card">
+    <div class="card-header" style="justify-content:space-between">
+      <span style="display:flex;align-items:center;gap:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        Mis operaciones registradas
+        <span id="mis-ops-count" style="background:#e8f1fb;color:#0d4a7a;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px">0</span>
+      </span>
+      <button class="btn btn-success btn-sm" onclick="exportMisOps()" id="btn-export-mis" style="display:none">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Descargar mis operaciones
+      </button>
+    </div>
+    <div class="table-scroll"><div id="mis-ops-body"><div class="empty" style="padding:1.5rem"><p style="font-size:13px">Aun no has registrado operaciones en esta sesion.</p></div></div></div>
   </div>
 </div>
 
@@ -358,10 +374,46 @@ function init(){
   try{const r=localStorage.getItem(K.rows);if(r)rows=JSON.parse(r);}catch(e){rows=[];}
   try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
   document.getElementById('current-date').textContent=new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  populateAll();updateStorageInfo();
+  populateAll();updateStorageInfo();renderMisOps();
 }
 
-function saveRows(){localStorage.setItem(K.rows,JSON.stringify(rows));updateStorageInfo();}
+function saveRows(){localStorage.setItem(K.rows,JSON.stringify(rows));updateStorageInfo();renderMisOps();}
+
+function renderMisOps(){
+  const exec=gv('f-ejecutivo');
+  const myRows=exec?rows.filter(r=>r.ejecutivo===exec):rows;
+  const count=document.getElementById('mis-ops-count');
+  const btn=document.getElementById('btn-export-mis');
+  const body=document.getElementById('mis-ops-body');
+  if(count)count.textContent=myRows.length;
+  if(btn)btn.style.display=myRows.length?'inline-flex':'none';
+  if(!body)return;
+  if(!myRows.length){body.innerHTML='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Aun no has registrado operaciones.</p></div>';return;}
+  let h='<table><thead><tr><th>#</th><th>Mes</th><th>F. Minuta</th><th>Cliente</th><th>Unidad</th><th>Dorm.</th><th>Modalidad</th><th>Valor dpto.</th><th>Proyecto</th><th>Hito</th><th>Asesor</th><th>Obs.</th><th></th></tr></thead><tbody>';
+  myRows.slice().reverse().forEach((r,i)=>{
+    const obs=r.obs?`<span title="${r.obs}">${r.obs.substring(0,22)}${r.obs.length>22?'...':''}</span>`:'<span class="td-muted">-</span>';
+    h+=`<tr><td class="td-muted">${myRows.length-i}</td><td>${r.mes}</td><td>${r.fecha_minuta||'<span class="td-muted">-</span>'}</td><td><strong>${r.cliente}</strong></td><td>${r.unidad}</td><td>${r.dorms||'<span class="td-muted">-</span>'}</td><td><span class="pill pill-gray">${r.modalidad}</span></td><td>${fmtM(r.moneda_valor,r.valor)}</td><td><span class="pill pill-green">${r.proyecto}</span></td><td>${r.hito}</td><td>${r.asesor}</td><td>${obs}</td><td><button class="btn-danger-ghost" onclick="deleteMyRow(${r.id})" title="Eliminar">x</button></td></tr>`;
+  });
+  h+='</tbody></table>';
+  body.innerHTML=h;
+}
+
+function deleteMyRow(id){
+  if(!confirm('Eliminar esta operacion?'))return;
+  rows=rows.filter(r=>r.id!==id);
+  saveRows();
+  renderMisOps();
+  toast('Operacion eliminada');
+}
+
+function exportMisOps(){
+  const exec=gv('f-ejecutivo');
+  const myRows=exec?rows.filter(r=>r.ejecutivo===exec):rows;
+  if(!myRows.length){toast('Sin datos para exportar','error');return;}
+  const nombre=exec||'ejecutivo';
+  XLSX.writeFile(makeWB(myRows.map(rowArr),'Mis Operaciones'),`Abril_Comisiones_${nombre.replace(/ /g,'_')}.xlsx`);
+  toast('Excel descargado','success');
+}
 function saveLists(){localStorage.setItem(K.lists,JSON.stringify(lists));}
 
 function updateStorageInfo(){
