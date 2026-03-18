@@ -246,18 +246,23 @@ tbody tr:hover td{background:var(--blue-xlight)}
 
   <!-- MIS OPERACIONES -->
   <div class="card" id="mis-ops-card">
-    <div class="card-header" style="justify-content:space-between">
+    <div class="card-header" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span style="display:flex;align-items:center;gap:8px">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        Mis operaciones registradas
+        Mis operaciones — mes actual
         <span id="mis-ops-count" style="background:#e8f1fb;color:#0d4a7a;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px">0</span>
       </span>
-      <button class="btn btn-success btn-sm" onclick="exportMisOps()" id="btn-export-mis" style="display:none">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Descargar mis operaciones
-      </button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="limpiarVistaOps()" id="btn-limpiar-mis" style="display:none">
+          Limpiar lista
+        </button>
+        <button class="btn btn-success btn-sm" onclick="exportMisOps()" id="btn-export-mis" style="display:none">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar mis operaciones
+        </button>
+      </div>
     </div>
-    <div class="table-scroll"><div id="mis-ops-body"><div class="empty" style="padding:1.5rem"><p style="font-size:13px">Aun no has registrado operaciones en esta sesion.</p></div></div></div>
+    <div class="table-scroll"><div id="mis-ops-body"><div class="empty" style="padding:1.5rem"><p style="font-size:13px">Selecciona tu nombre y el mes para ver tus operaciones.</p></div></div></div>
   </div>
 </div>
 
@@ -453,22 +458,70 @@ function deleteRowFromFirebase(id){
 }
 
 function renderMisOps(){
-  const exec=gv('f-ejecutivo');
-  const myRows=exec?rows.filter(r=>r.ejecutivo===exec):rows;
-  const count=document.getElementById('mis-ops-count');
-  const btn=document.getElementById('btn-export-mis');
-  const body=document.getElementById('mis-ops-body');
-  if(count)count.textContent=myRows.length;
-  if(btn)btn.style.display=myRows.length?'inline-flex':'none';
-  if(!body)return;
-  if(!myRows.length){body.innerHTML='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Aun no has registrado operaciones.</p></div>';return;}
-  let h='<table><thead><tr><th>#</th><th>Mes</th><th>F. Minuta</th><th>Cliente</th><th>Unidad</th><th>Dorm.</th><th>Modalidad</th><th>Valor dpto.</th><th>Proyecto</th><th>Hito</th><th>Asesor</th><th>Obs.</th><th></th></tr></thead><tbody>';
+  const exec = gv('f-ejecutivo');
+  const mes  = gv('f-mes');
+  const count = document.getElementById('mis-ops-count');
+  const btnExport = document.getElementById('btn-export-mis');
+  const btnLimpiar = document.getElementById('btn-limpiar-mis');
+  const body = document.getElementById('mis-ops-body');
+
+  // Show only ops of THIS executive for THIS selected month
+  const myRows = exec && mes
+    ? rows.filter(r => r.ejecutivo === exec && r.mes === mes)
+    : exec
+      ? rows.filter(r => r.ejecutivo === exec)
+      : [];
+
+  if(count) count.textContent = myRows.length;
+  if(btnExport) btnExport.style.display = myRows.length ? 'inline-flex' : 'none';
+  if(btnLimpiar) btnLimpiar.style.display = myRows.length ? 'inline-flex' : 'none';
+  if(!body) return;
+
+  if(!exec){
+    body.innerHTML='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Selecciona tu nombre arriba para ver tus operaciones.</p></div>';
+    return;
+  }
+  if(!myRows.length){
+    body.innerHTML=`<div class="empty" style="padding:1.5rem"><p style="font-size:13px">No tienes operaciones registradas${mes?' para '+mes:''}.</p></div>`;
+    return;
+  }
+
+  let h='<table><thead><tr><th>#</th><th>F. Minuta</th><th>Cliente</th><th>Unidad</th><th>Dorm.</th><th>Modalidad</th><th>Valor dpto.</th><th>Proyecto</th><th>Hito</th><th>Asesor</th><th>Obs.</th><th></th></tr></thead><tbody>';
   myRows.slice().reverse().forEach((r,i)=>{
     const obs=r.obs?`<span title="${r.obs}">${r.obs.substring(0,22)}${r.obs.length>22?'...':''}</span>`:'<span class="td-muted">-</span>';
-    h+=`<tr><td class="td-muted">${myRows.length-i}</td><td>${r.mes}</td><td>${r.fecha_minuta||'<span class="td-muted">-</span>'}</td><td><strong>${r.cliente}</strong></td><td>${r.unidad}</td><td>${r.dorms||'<span class="td-muted">-</span>'}</td><td><span class="pill pill-gray">${r.modalidad}</span></td><td>${fmtM(r.moneda_valor,r.valor)}</td><td><span class="pill pill-green">${r.proyecto}</span></td><td>${r.hito}</td><td>${r.asesor}</td><td>${obs}</td><td><button class="btn-danger-ghost" onclick="deleteMyRow(${r.id})" title="Eliminar">x</button></td></tr>`;
+    h+=`<tr>
+      <td class="td-muted">${myRows.length-i}</td>
+      <td>${r.fecha_minuta||'<span class="td-muted">-</span>'}</td>
+      <td><strong>${r.cliente}</strong></td>
+      <td>${r.unidad}</td>
+      <td>${r.dorms||'<span class="td-muted">-</span>'}</td>
+      <td><span class="pill pill-gray">${r.modalidad}</span></td>
+      <td>${fmtM(r.moneda_valor,r.valor)}</td>
+      <td><span class="pill pill-green">${r.proyecto}</span></td>
+      <td>${r.hito}</td>
+      <td>${r.asesor}</td>
+      <td>${obs}</td>
+      <td><button class="btn-danger-ghost" onclick="deleteMyRow(${r.id})" title="Eliminar">×</button></td>
+    </tr>`;
   });
   h+='</tbody></table>';
   body.innerHTML=h;
+}
+
+function limpiarVistaOps(){
+  // Only clears the visual list — does NOT delete from Firebase
+  // Just resets the month selector so the list disappears
+  const body=document.getElementById('mis-ops-body');
+  const count=document.getElementById('mis-ops-count');
+  const btnExport=document.getElementById('btn-export-mis');
+  const btnLimpiar=document.getElementById('btn-limpiar-mis');
+  if(body) body.innerHTML='<div class="empty" style="padding:1.5rem"><p style="font-size:13px">Lista limpiada. Selecciona un mes para ver operaciones.</p></div>';
+  if(count) count.textContent='0';
+  if(btnExport) btnExport.style.display='none';
+  if(btnLimpiar) btnLimpiar.style.display='none';
+  // Reset month selector
+  const mesSel=document.getElementById('f-mes');
+  if(mesSel) mesSel.selectedIndex=0;
 }
 
 function deleteMyRow(id){
@@ -482,10 +535,14 @@ function deleteMyRow(id){
 
 function exportMisOps(){
   const exec=gv('f-ejecutivo');
-  const myRows=exec?rows.filter(r=>r.ejecutivo===exec):rows;
+  const mes=gv('f-mes');
+  const myRows = exec && mes
+    ? rows.filter(r=>r.ejecutivo===exec && r.mes===mes)
+    : exec ? rows.filter(r=>r.ejecutivo===exec) : [];
   if(!myRows.length){toast('Sin datos para exportar','error');return;}
   const nombre=exec||'ejecutivo';
-  XLSX.writeFile(makeWB(myRows.map(rowArr),'Mis Operaciones'),`Abril_Comisiones_${nombre.replace(/ /g,'_')}.xlsx`);
+  const sufMes=mes?'_'+mes.replace(' ','_'):'';
+  XLSX.writeFile(makeWB(myRows.map(rowArr),'Mis Operaciones'),`Abril_Comisiones_${nombre.replace(/ /g,'_')}${sufMes}.xlsx`);
   toast('Excel descargado','success');
 }
 function saveLists(){
