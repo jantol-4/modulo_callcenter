@@ -181,6 +181,10 @@ tbody tr:hover td{background:var(--blue-xlight)}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
     Reporte mensual
   </button>
+  <button class="nav-tab hidden admin-only" data-tab="comisiones" onclick="showTab('comisiones',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    Comisiones gerencia
+  </button>
   <button class="nav-tab hidden admin-only" data-tab="config" onclick="showTab('config',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     Configuración
@@ -293,6 +297,19 @@ tbody tr:hover td{background:var(--blue-xlight)}
   <div class="table-wrap"><div class="table-scroll"><div id="reporte-body"></div></div></div>
 </div>
 
+<!-- TAB COMISIONES GERENCIA (solo admin) -->
+<div id="tab-comisiones" class="hidden">
+  <div class="filter-bar" style="margin-bottom:1.25rem">
+    <label>Mes de pago</label>
+    <select id="com-mes" onchange="renderComisiones()"><option value="">Seleccionar mes...</option></select>
+    <div class="filter-count" id="com-count">—</div>
+  </div>
+  <!-- Tarjetas por ejecutivo con su botón de descarga individual -->
+  <div id="com-cards-wrap"></div>
+  <!-- Tabla detalle del ejecutivo seleccionado -->
+  <div id="com-detalle-wrap"></div>
+</div>
+
 <!-- TAB CONFIG (solo admin) -->
 <div id="tab-config" class="hidden">
   <div class="card">
@@ -400,6 +417,8 @@ function init(){
     if(hTab&&!hTab.classList.contains('hidden')){populateAll();renderHistorial();}
     const rTab=document.getElementById('tab-reporte');
     if(rTab&&!rTab.classList.contains('hidden')){populateAll();renderReporte();}
+    const cTab=document.getElementById('tab-comisiones');
+    if(cTab&&!cTab.classList.contains('hidden')){populateAll();renderComisiones();}
   }, err=>{
     try{const r=localStorage.getItem(K.rows);if(r)rows=JSON.parse(r);}catch(e){rows=[];}
     updateStorageInfo();renderMisOps();
@@ -580,6 +599,207 @@ function exportHistorial(){const fr=filteredRows();if(!fr.length){toast('Sin dat
 function exportReporte(){const mes=gv('rep-mes'),fr=rows.filter(r=>r.mes===mes);if(!fr.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(fr.map(rowArr),mes),`Abril_Comisiones_${mes.replace(' ','_')}.xlsx`);toast('Reporte descargado','success');}
 function exportBackup(){if(!rows.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(rows.map(rowArr),'Backup'),'Abril_Backup_Completo.xlsx');toast('Backup descargado','success');}
 
+// COMISIONES GERENCIA
+function getPctComision(n){
+  if(n>=11) return 0.0012;
+  if(n>=6)  return 0.0010;
+  return 0.00075;
+}
+function getPctLabel(n){
+  if(n>=11) return '0.12%';
+  if(n>=6)  return '0.10%';
+  return '0.075%';
+}
+function getEscala(n){
+  if(n>=11) return '11 a más ops → 0.12%';
+  if(n>=6)  return '6 a 10 ops → 0.10%';
+  return '1 a 5 ops → 0.075%';
+}
+
+function buildComisionesData(mes, ejecutivo){
+  const mesRows = rows.filter(r => r.mes === mes && r.ejecutivo === ejecutivo);
+  const n = mesRows.length;
+  const pct = getPctComision(n);
+  return mesRows.map((r,i) => ({
+    ...r,
+    _n: n,
+    _pct_label: getPctLabel(n),
+    _pct_val: pct,
+    _escala: getEscala(n),
+    _monto_comision: (r.valor ? parseFloat(r.valor) : 0) * pct,
+    _op_num: i + 1
+  }));
+}
+
+function renderComisiones(){
+  const mes = gv('com-mes');
+  const cardsWrap = document.getElementById('com-cards-wrap');
+  const detalleWrap = document.getElementById('com-detalle-wrap');
+  const countEl = document.getElementById('com-count');
+
+  if(!mes){
+    cardsWrap.innerHTML = '<div class="empty" style="padding:2rem"><p>Selecciona un mes para ver las comisiones por ejecutivo.</p></div>';
+    detalleWrap.innerHTML = '';
+    countEl.textContent = '—';
+    return;
+  }
+
+  const mesRows = rows.filter(r => r.mes === mes);
+  const execs = [...new Set(mesRows.map(r=>r.ejecutivo))].sort();
+  countEl.textContent = execs.length + ' ejecutivo' + (execs.length!==1?'s':'') + ' · ' + mesRows.length + ' operaciones';
+
+  if(!execs.length){
+    cardsWrap.innerHTML = `<div class="empty" style="padding:2rem"><p>Sin operaciones registradas para ${mes}.</p></div>`;
+    detalleWrap.innerHTML = '';
+    return;
+  }
+
+  // Build summary cards, one per executive
+  let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:1.5rem">';
+  execs.forEach(exec => {
+    const eRows = mesRows.filter(r=>r.ejecutivo===exec);
+    const n = eRows.length;
+    const pct = getPctComision(n);
+    const totalValor = eRows.reduce((s,r)=>s+(r.valor?parseFloat(r.valor):0),0);
+    const totalComision = totalValor * pct;
+    const moneda = eRows[0].moneda_valor || 'S/';
+    html += `<div class="card" style="margin-bottom:0;border-top:3px solid var(--green)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+        <div>
+          <div style="font-size:15px;font-weight:600;color:var(--g900)">${exec}</div>
+          <div style="font-size:12px;color:var(--g500);margin-top:2px">${n} operación${n!==1?'es':''} · ${getEscala(n)}</div>
+        </div>
+        <span class="pill pill-green">${getPctLabel(n)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:var(--g50);border-radius:var(--r-sm);padding:8px 10px">
+          <div style="font-size:10px;color:var(--g500);margin-bottom:2px">Valor total dptos.</div>
+          <div style="font-size:13px;font-weight:600;color:var(--g800)">${moneda} ${totalValor.toLocaleString('es-PE',{minimumFractionDigits:2})}</div>
+        </div>
+        <div style="background:var(--green-light);border-radius:var(--r-sm);padding:8px 10px">
+          <div style="font-size:10px;color:var(--green-dark);margin-bottom:2px">Comisión a pagar</div>
+          <div style="font-size:13px;font-weight:600;color:var(--green-dark)">${moneda} ${totalComision.toLocaleString('es-PE',{minimumFractionDigits:2})}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" style="flex:1" onclick="verDetalleEjecutivo('${exec}','${mes}')">
+          Ver detalle
+        </button>
+        <button class="btn btn-success btn-sm" style="flex:1" onclick="exportEjecutivo('${exec}','${mes}')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar Excel
+        </button>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  cardsWrap.innerHTML = html;
+}
+
+function verDetalleEjecutivo(exec, mes){
+  const data = buildComisionesData(mes, exec);
+  const wrap = document.getElementById('com-detalle-wrap');
+  if(!data.length){wrap.innerHTML='';return;}
+
+  const totalComision = data.reduce((s,r)=>s+r._monto_comision,0);
+  const moneda = data[0].moneda_valor||'S/';
+
+  let h = `<div class="card" style="margin-bottom:0">
+    <div class="card-header" style="justify-content:space-between">
+      <span>Detalle · ${exec} · ${mes}</span>
+      <button class="btn btn-success btn-sm" onclick="exportEjecutivo('${exec}','${mes}')">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Descargar Excel
+      </button>
+    </div>
+    <div class="table-scroll"><table>
+    <thead><tr>
+      <th>#</th><th>Cliente</th><th>Unidad</th><th>F. Minuta</th><th>Proyecto</th>
+      <th>Hito</th><th>Modalidad</th><th>Valor dpto.</th><th>% Abono</th>
+      <th style="background:#edf7e3;color:#2d6016">N° ops</th>
+      <th style="background:#edf7e3;color:#2d6016">% Comisión</th>
+      <th style="background:#edf7e3;color:#2d6016">Monto comisión</th>
+      <th>Asesor</th>
+    </tr></thead><tbody>`;
+
+  data.forEach((r,i)=>{
+    h+=`<tr>
+      <td class="td-muted">${i+1}</td>
+      <td><strong>${r.cliente}</strong></td><td>${r.unidad}</td>
+      <td>${r.fecha_minuta||'<span class="td-muted">—</span>'}</td>
+      <td><span class="pill pill-green">${r.proyecto}</span></td>
+      <td>${r.hito}</td><td>${r.modalidad}</td>
+      <td>${fmtM(r.moneda_valor,r.valor)}</td>
+      <td>${r.porcentaje?r.porcentaje+'%':'<span class="td-muted">—</span>'}</td>
+      <td style="background:#f6fdf0;font-weight:600;color:#2d6016;text-align:center">${r._n}</td>
+      <td style="background:#f6fdf0;font-weight:600;color:#2d6016;text-align:center">${r._pct_label}</td>
+      <td style="background:#f6fdf0;font-weight:600;color:#1a4a09">${moneda} ${r._monto_comision.toLocaleString('es-PE',{minimumFractionDigits:2})}</td>
+      <td>${r.asesor}</td>
+    </tr>`;
+  });
+
+  h+=`<tr style="background:var(--green-light);font-weight:600">
+    <td colspan="11" style="text-align:right;color:var(--green-dark);font-size:12px">TOTAL COMISIÓN ${exec.toUpperCase()}</td>
+    <td style="color:var(--green-dark)">${moneda} ${totalComision.toLocaleString('es-PE',{minimumFractionDigits:2})}</td>
+    <td></td>
+  </tr>`;
+  h+=`</tbody></table></div></div>`;
+  wrap.innerHTML = h;
+  wrap.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function exportEjecutivo(exec, mes){
+  const data = buildComisionesData(mes, exec);
+  if(!data.length){toast('Sin datos para '+exec,'error');return;}
+
+  const wb = XLSX.utils.book_new();
+  const hdr = ['#','Ejecutivo','Mes de pago','Fecha minuta','Cliente','Unidad',
+    'Dorm.','Estac.','Modalidad','Proyecto','Hito','Asesor derivado',
+    '% Abono cliente','Moneda','Valor dpto.','Monto recibido',
+    'N° ops ejecutivo','Escala comisión','% Comisión','Monto comisión',
+    'Link CRM','Observaciones','Fecha registro'];
+
+  const dataArr = data.map((r,i)=>[
+    i+1, r.ejecutivo, r.mes, r.fecha_minuta||'', r.cliente, r.unidad,
+    r.dorms||'', r.estac||'', r.modalidad, r.proyecto, r.hito, r.asesor,
+    r.porcentaje ? parseFloat(r.porcentaje)/100 : '',
+    r.moneda_valor||'S/', r.valor ? parseFloat(r.valor) : '',
+    r.monto_recibido ? parseFloat(r.monto_recibido) : '',
+    r._n, r._escala, r._pct_val, r._monto_comision,
+    r.crm||'', r.obs||'', r.fecha_registro
+  ]);
+
+  // Totals row
+  const totalC = data.reduce((s,r)=>s+r._monto_comision,0);
+  const totalV = data.reduce((s,r)=>s+(r.valor?parseFloat(r.valor):0),0);
+  dataArr.push(['','','','','TOTAL','','','','','','','','','',totalV,'','','','',totalC,'','','']);
+
+  const ws = XLSX.utils.aoa_to_sheet([hdr,...dataArr]);
+  ws['!cols'] = [4,20,14,13,26,16,7,7,18,18,16,20,12,8,16,16,12,22,11,18,35,30,14].map(w=>({wch:w}));
+
+  // Format percentage columns
+  const pctFmt = '0.000%';
+  const monyFmt = '#,##0.00';
+  for(let row=1;row<=dataArr.length;row++){
+    const pctCell = XLSX.utils.encode_cell({r:row,c:18});
+    const montoCell = XLSX.utils.encode_cell({r:row,c:19});
+    const valorCell = XLSX.utils.encode_cell({r:row,c:14});
+    const abonoCell = XLSX.utils.encode_cell({r:row,c:12});
+    if(ws[pctCell]) ws[pctCell].z = pctFmt;
+    if(ws[montoCell]) ws[montoCell].z = monyFmt;
+    if(ws[valorCell]) ws[valorCell].z = monyFmt;
+    if(ws[abonoCell]) ws[abonoCell].z = pctFmt;
+  }
+
+  const sheetName = exec.substring(0,31).replace(/[/\?*[\]]/g,'');
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  const fname = `Abril_Comision_${exec.replace(/ /g,'_')}_${mes.replace(' ','_')}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast('Excel de '+exec+' descargado','success');
+}
+
+
 // TAGS
 function renderTags(){
   ['ejecutivos','proyectos','hitos','asesores','modalidades'].forEach(k=>{
@@ -625,6 +845,13 @@ function showTab(name,btn){
   // Always re-render with current data when switching tabs
   if(name==='historial'){populateAll();renderHistorial();}
   if(name==='reporte'){populateAll();renderReporte();}
+  if(name==='comisiones'){
+    populateAll();
+    // sync com-mes with same month options
+    const comMes=document.getElementById('com-mes');
+    if(comMes){const cur=comMes.value;comMes.innerHTML=buildM(true);comMes.value=cur;}
+    renderComisiones();
+  }
   if(name==='config')renderTags();
 }
 
