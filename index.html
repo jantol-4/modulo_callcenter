@@ -331,6 +331,10 @@ tbody tr:hover td{background:var(--blue-xlight)}
         Exportar backup completo
       </button>
       <button class="btn btn-sm" style="background:#fff;border:1px solid var(--red);color:var(--red)" onclick="confirmClearAll()">Eliminar todas las operaciones</button>
+      <button class="btn btn-ghost btn-sm" onclick="migrateLocalToFirebase()" title="Si registraste operaciones antes de conectar Firebase, esto las sube a la nube">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16,16 12,12 8,16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+        Subir operaciones locales a Firebase
+      </button>
     </div>
   </div>
 </div>
@@ -377,28 +381,57 @@ const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','
 const YEARS=[2026,2027,2028,2029];
 
 function init(){
-  try{const r=localStorage.getItem(K.rows);if(r)rows=JSON.parse(r);}catch(e){rows=[];}
   document.getElementById('current-date').textContent=new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-  // Load shared lists from Firebase, fall back to localStorage if offline
+
+  // Load shared ROWS from Firebase (real-time, all executives)
+  db.ref('abril_operaciones').on('value', snap=>{
+    const data=snap.val();
+    if(data && typeof data==='object'){
+      rows=Object.values(data);
+      rows.sort((a,b)=>a.id-b.id);
+    } else {
+      rows=[];
+    }
+    try{localStorage.setItem(K.rows,JSON.stringify(rows));}catch(e){}
+    updateStorageInfo();
+    renderMisOps();
+    // Always refresh visible admin views
+    const hTab=document.getElementById('tab-historial');
+    if(hTab&&!hTab.classList.contains('hidden')){populateAll();renderHistorial();}
+    const rTab=document.getElementById('tab-reporte');
+    if(rTab&&!rTab.classList.contains('hidden')){populateAll();renderReporte();}
+  }, err=>{
+    try{const r=localStorage.getItem(K.rows);if(r)rows=JSON.parse(r);}catch(e){rows=[];}
+    updateStorageInfo();renderMisOps();
+  });
+
+  // Load shared LISTS from Firebase
   db.ref('abril_listas').on('value', snap=>{
     const data=snap.val();
     if(data && typeof data==='object'){
       lists=data;
-      // persist locally as fallback
       try{localStorage.setItem(K.lists,JSON.stringify(lists));}catch(e){}
     } else {
-      // no Firebase data yet — try localStorage fallback
       try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
     }
     populateAll();renderTags();updateStorageInfo();renderMisOps();
   }, err=>{
-    // offline fallback
     try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
     populateAll();renderTags();updateStorageInfo();renderMisOps();
   });
 }
 
-function saveRows(){localStorage.setItem(K.rows,JSON.stringify(rows));updateStorageInfo();renderMisOps();}
+function saveRows(){
+  localStorage.setItem(K.rows,JSON.stringify(rows));
+  updateStorageInfo();
+  renderMisOps();
+}
+function pushRowToFirebase(row){
+  db.ref('abril_operaciones/'+row.id).set(row).catch(e=>console.warn('Firebase write error',e));
+}
+function deleteRowFromFirebase(id){
+  db.ref('abril_operaciones/'+id).remove().catch(e=>console.warn('Firebase delete error',e));
+}
 
 function renderMisOps(){
   const exec=gv('f-ejecutivo');
@@ -422,6 +455,7 @@ function renderMisOps(){
 function deleteMyRow(id){
   if(!confirm('Eliminar esta operacion?'))return;
   rows=rows.filter(r=>r.id!==id);
+  deleteRowFromFirebase(id);
   saveRows();
   renderMisOps();
   toast('Operacion eliminada');
@@ -480,7 +514,9 @@ function gv(id){return(document.getElementById(id)?.value||'').trim();}
 function addRow(){
   const req={'f-ejecutivo':'Ejecutivo','f-mes':'Mes de pago','f-fecha-minuta':'Fecha de minuta','f-cliente':'Cliente','f-unidad':'Unidad','f-modalidad':'Modalidad','f-valor':'Valor del departamento','f-proyecto':'Proyecto','f-hito':'Hito','f-asesor':'Asesor'};
   for(const[id,lbl]of Object.entries(req)){if(!gv(id)){toast('Campo requerido: '+lbl,'error');document.getElementById(id).focus();return;}}
-  rows.push({id:Date.now(),fecha_registro:new Date().toLocaleDateString('es-PE'),ejecutivo:gv('f-ejecutivo'),mes:gv('f-mes'),fecha_minuta:gv('f-fecha-minuta'),cliente:gv('f-cliente'),unidad:gv('f-unidad'),dorms:gv('f-dorms'),estac:gv('f-estac'),modalidad:gv('f-modalidad'),porcentaje:gv('f-porcentaje'),moneda_valor:gv('f-moneda-valor'),valor:gv('f-valor'),moneda_monto:gv('f-moneda-monto'),monto_recibido:gv('f-monto-recibido'),moneda:gv('f-moneda'),proyecto:gv('f-proyecto'),hito:gv('f-hito'),asesor:gv('f-asesor'),crm:gv('f-crm'),obs:gv('f-obs')});
+  const newRow={id:Date.now(),fecha_registro:new Date().toLocaleDateString('es-PE'),ejecutivo:gv('f-ejecutivo'),mes:gv('f-mes'),fecha_minuta:gv('f-fecha-minuta'),cliente:gv('f-cliente'),unidad:gv('f-unidad'),dorms:gv('f-dorms'),estac:gv('f-estac'),modalidad:gv('f-modalidad'),porcentaje:gv('f-porcentaje'),moneda_valor:gv('f-moneda-valor'),valor:gv('f-valor'),moneda_monto:gv('f-moneda-monto'),monto_recibido:gv('f-monto-recibido'),moneda:gv('f-moneda'),proyecto:gv('f-proyecto'),hito:gv('f-hito'),asesor:gv('f-asesor'),crm:gv('f-crm'),obs:gv('f-obs')};
+  rows.push(newRow);
+  pushRowToFirebase(newRow);
   saveRows();clearForm();toast('Operación registrada correctamente','success');
 }
 function clearForm(){
@@ -489,7 +525,9 @@ function clearForm(){
 }
 function deleteRow(id){
   if(!confirm('¿Eliminar esta operación?'))return;
-  rows=rows.filter(r=>r.id!==id);saveRows();renderHistorial();toast('Operación eliminada');
+  rows=rows.filter(r=>r.id!==id);
+  deleteRowFromFirebase(id);
+  saveRows();renderHistorial();toast('Operación eliminada');
 }
 
 // HISTORIAL
@@ -551,7 +589,32 @@ function renderTags(){
 }
 function addTag(k){const el=document.getElementById('new-'+k);if(!el)return;const v=el.value.trim();if(!v)return;if(!lists[k])lists[k]=[];if(!lists[k].includes(v))lists[k].push(v);el.value='';saveLists();renderTags();populateAll();toast(`"${v}" agregado`,'success');}
 function removeTag(k,i){lists[k].splice(i,1);saveLists();renderTags();populateAll();}
-function confirmClearAll(){if(!confirm('¿Eliminar TODAS las operaciones?'))return;rows=[];saveRows();renderHistorial();toast('Operaciones eliminadas');}
+function migrateLocalToFirebase(){
+  try{
+    const local=localStorage.getItem(K.rows);
+    if(!local){toast('No hay datos locales para migrar','error');return;}
+    const localRows=JSON.parse(local);
+    if(!localRows.length){toast('No hay datos locales para migrar','error');return;}
+    let count=0;
+    localRows.forEach(r=>{
+      db.ref('abril_operaciones/'+r.id).set(r).then(()=>{
+        count++;
+        if(count===localRows.length)toast(count+' operaciones subidas a Firebase','success');
+      }).catch(e=>console.warn(e));
+    });
+  }catch(e){toast('Error al migrar: '+e.message,'error');}
+}
+
+function confirmClearAll(){
+  if(!confirm('¿Eliminar TODAS las operaciones? Esta acción no se puede deshacer.'))return;
+  db.ref('abril_operaciones').remove().catch(e=>console.warn(e));
+  rows=[];
+  localStorage.removeItem(K.rows);
+  updateStorageInfo();
+  renderHistorial();
+  renderMisOps();
+  toast('Operaciones eliminadas');
+}
 
 // TABS
 function showTab(name,btn){
@@ -559,8 +622,9 @@ function showTab(name,btn){
   document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.remove('hidden');
   if(btn)btn.classList.add('active');
-  if(name==='historial')renderHistorial();
-  if(name==='reporte')renderReporte();
+  // Always re-render with current data when switching tabs
+  if(name==='historial'){populateAll();renderHistorial();}
+  if(name==='reporte'){populateAll();renderReporte();}
   if(name==='config')renderTags();
 }
 
