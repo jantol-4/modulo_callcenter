@@ -6,6 +6,7 @@
 <title>Comisiones · Abril Grupo Inmobiliario</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.23.0/firebase-database-compat.min.js"></script>
 <style>
@@ -286,8 +287,12 @@ tbody tr:hover td{background:var(--blue-xlight)}
 <!-- TAB REPORTE (solo admin) -->
 <div id="tab-reporte" class="hidden">
   <div class="filter-bar" style="margin-bottom:1.25rem">
-    <label>Mes de reporte</label>
+    <label>Mes</label>
     <select id="rep-mes" onchange="renderReporte()"><option value="">Seleccionar mes...</option></select>
+    <label>Ejecutivo</label>
+    <select id="rep-ejecutivo" onchange="renderReporte()"><option value="">Todos</option></select>
+    <label>Proyecto</label>
+    <select id="rep-proyecto" onchange="renderReporte()"><option value="">Todos</option></select>
     <button class="btn btn-success btn-sm" onclick="exportReporte()">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       Exportar reporte
@@ -298,6 +303,17 @@ tbody tr:hover td{background:var(--blue-xlight)}
     <div class="metric green"><div class="lbl">Clientes únicos</div><div class="val" id="m-clients">—</div></div>
     <div class="metric amber"><div class="lbl">Valor total</div><div class="val" id="m-valor">—</div></div>
     <div class="metric teal"><div class="lbl">Proyectos activos</div><div class="val" id="m-proyectos">—</div></div>
+  </div>
+  <!-- Gráficos evolutivos -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:1.25rem" id="charts-wrap">
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header">Operaciones por ejecutivo (acumulado mensual)</div>
+      <canvas id="chart-exec" height="200"></canvas>
+    </div>
+    <div class="card" style="margin-bottom:0">
+      <div class="card-header">Valor total por mes</div>
+      <canvas id="chart-valor" height="200"></canvas>
+    </div>
   </div>
   <div class="table-wrap"><div class="table-scroll"><div id="reporte-body"></div></div></div>
 </div>
@@ -313,6 +329,18 @@ tbody tr:hover td{background:var(--blue-xlight)}
   <div id="com-cards-wrap"></div>
   <!-- Tabla detalle del ejecutivo seleccionado -->
   <div id="com-detalle-wrap"></div>
+
+  <!-- Correo gerencia -->
+  <div class="card" style="margin-top:1.25rem">
+    <div class="card-header" style="justify-content:space-between">
+      <span>Correo para gerencia</span>
+      <button class="btn btn-ghost btn-sm" onclick="copiarCorreo()" id="btn-copiar">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        Copiar correo
+      </button>
+    </div>
+    <textarea id="correo-gerencia" style="width:100%;min-height:130px;font-family:var(--font);font-size:13.5px;padding:10px 12px;border:1px solid var(--g300);border-radius:var(--r-sm);color:var(--g900);background:#fff;resize:vertical;outline:none;line-height:1.7"></textarea>
+  </div>
 </div>
 
 <!-- TAB CONFIG (solo admin) -->
@@ -422,6 +450,7 @@ function init(){
     if(hTab&&!hTab.classList.contains('hidden')){populateAll();renderHistorial();}
     const rTab=document.getElementById('tab-reporte');
     if(rTab&&!rTab.classList.contains('hidden')){populateAll();renderReporte();}
+    else{renderCharts();}
     const cTab=document.getElementById('tab-comisiones');
     if(cTab&&!cTab.classList.contains('hidden')){populateAll();renderComisiones();}
   }, err=>{
@@ -628,23 +657,95 @@ function renderHistorial(){
 }
 
 // REPORTE
+let _chartExec=null, _chartValor=null;
+
 function renderReporte(){
-  const mes=gv('rep-mes'),mrows=rows.filter(r=>r.mes===mes);
+  const mes=gv('rep-mes');
+  const repExec=gv('rep-ejecutivo');
+  const repProy=gv('rep-proyecto');
+
+  // Populate filter selects dynamically
+  const allExecs=[...new Set(rows.map(r=>r.ejecutivo))].sort();
+  const allProys=[...new Set(rows.map(r=>r.proyecto))].sort();
+  const selE=document.getElementById('rep-ejecutivo');
+  const selP=document.getElementById('rep-proyecto');
+  if(selE){const cv=selE.value;selE.innerHTML='<option value="">Todos</option>';allExecs.forEach(e=>{const o=document.createElement('option');o.value=o.textContent=e;if(e===cv)o.selected=true;selE.appendChild(o);});}
+  if(selP){const cv=selP.value;selP.innerHTML='<option value="">Todos</option>';allProys.forEach(p=>{const o=document.createElement('option');o.value=o.textContent=p;if(p===cv)o.selected=true;selP.appendChild(o);});}
+
+  // Filter rows
+  let mrows=mes?rows.filter(r=>r.mes===mes):rows;
+  if(repExec) mrows=mrows.filter(r=>r.ejecutivo===repExec);
+  if(repProy) mrows=mrows.filter(r=>r.proyecto===repProy);
+
   const tv=mrows.reduce((s,r)=>s+(r.valor?parseFloat(r.valor):0),0);
   const proy=new Set(mrows.map(r=>r.proyecto)).size,cli=new Set(mrows.map(r=>r.cliente)).size;
   document.getElementById('m-ops').textContent=mrows.length||'—';
   document.getElementById('m-clients').textContent=cli||'—';
   document.getElementById('m-valor').textContent=tv>0?'S/ '+tv.toLocaleString('es-PE',{minimumFractionDigits:0}):'—';
   document.getElementById('m-proyectos').textContent=proy||'—';
+
+  // ── CHARTS ──
+  renderCharts();
+
   const c=document.getElementById('reporte-body');
-  if(!mes){c.innerHTML='<div class="empty"><p>Selecciona un mes para ver el reporte.</p></div>';return;}
-  if(!mrows.length){c.innerHTML=`<div class="empty"><p>Sin operaciones para ${mes}.</p></div>`;return;}
+  if(!mrows.length){
+    c.innerHTML=mes?`<div class="empty"><p>Sin operaciones para los filtros seleccionados.</p></div>`:'<div class="empty"><p>Selecciona un mes o usa los filtros para ver operaciones.</p></div>';
+    return;
+  }
   let h='<table><thead><tr><th>#</th><th>Ejecutivo</th><th>Cliente</th><th>Unidad</th><th>F. Minuta</th><th>Modalidad</th><th>Dorm.</th><th>Estac.</th><th>%Abono</th><th>Valor dpto.</th><th>Monto recibido</th><th>Moneda</th><th>Proyecto</th><th>Hito</th><th>Asesor</th><th>CRM</th><th>Obs.</th></tr></thead><tbody>';
   mrows.forEach((r,i)=>{
     const crm=r.crm?`<a href="${r.crm}" target="_blank" class="td-link">ver →</a>`:'<span class="td-muted">—</span>';
     h+=`<tr><td class="td-muted">${i+1}</td><td><span class="pill pill-blue">${r.ejecutivo}</span></td><td><strong>${r.cliente}</strong></td><td>${r.unidad}</td><td>${r.fecha_minuta||'<span class="td-muted">—</span>'}</td><td>${r.modalidad}</td><td>${r.dorms||'—'}</td><td>${r.estac||'—'}</td><td>${r.porcentaje?r.porcentaje+'%':'—'}</td><td>${fmtM(r.moneda_valor,r.valor)}</td><td>${fmtM(r.moneda_monto,r.monto_recibido)}</td><td>${r.moneda}</td><td><span class="pill pill-green">${r.proyecto}</span></td><td>${r.hito}</td><td>${r.asesor}</td><td>${crm}</td><td title="${r.obs}">${r.obs?(r.obs.substring(0,25)+(r.obs.length>25?'…':'')):'—'}</td></tr>`;
   });
   h+='</tbody></table>';c.innerHTML=h;
+}
+
+function renderCharts(){
+  if(typeof Chart==='undefined') return;
+  const wrap=document.getElementById('charts-wrap');
+  if(!wrap||wrap.classList.contains('hidden')) return;
+
+  // Build month list sorted
+  const MORDER=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const allMeses=[...new Set(rows.map(r=>r.mes))].sort((a,b)=>{
+    const [ma,ya]=a.split(' ');const [mb,yb]=b.split(' ');
+    return ya!==yb?parseInt(ya)-parseInt(yb):MORDER.indexOf(ma)-MORDER.indexOf(mb);
+  });
+  const execs=[...new Set(rows.map(r=>r.ejecutivo))].sort();
+  const COLORS=['#1565A8','#6DB33F','#f59f00','#0c8599','#e03131','#7950f2','#e64980','#fd7e14'];
+
+  // Chart 1: ops por ejecutivo por mes (stacked bar)
+  const execData=execs.map((e,i)=>({
+    label:e,
+    data:allMeses.map(m=>rows.filter(r=>r.mes===m&&r.ejecutivo===e).length),
+    backgroundColor:COLORS[i%COLORS.length]+'cc',
+    borderColor:COLORS[i%COLORS.length],
+    borderWidth:1
+  }));
+  const ctx1=document.getElementById('chart-exec');
+  if(ctx1){
+    if(_chartExec){_chartExec.destroy();_chartExec=null;}
+    _chartExec=new Chart(ctx1,{
+      type:'bar',
+      data:{labels:allMeses.map(m=>m.split(' ')[0].substring(0,3)+' '+m.split(' ')[1].slice(2)),datasets:execData},
+      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{position:'bottom',labels:{font:{size:11},boxWidth:12}}},scales:{x:{stacked:true,ticks:{font:{size:10}}},y:{stacked:true,beginAtZero:true,ticks:{font:{size:10},stepSize:1}}}}
+    });
+  }
+
+  // Chart 2: valor total por mes (line)
+  const valorData=allMeses.map(m=>rows.filter(r=>r.mes===m).reduce((s,r)=>s+(r.valor?parseFloat(r.valor):0),0));
+  const ctx2=document.getElementById('chart-valor');
+  if(ctx2){
+    if(_chartValor){_chartValor.destroy();_chartValor=null;}
+    _chartValor=new Chart(ctx2,{
+      type:'line',
+      data:{
+        labels:allMeses.map(m=>m.split(' ')[0].substring(0,3)+' '+m.split(' ')[1].slice(2)),
+        datasets:[{label:'Valor total S/',data:valorData,borderColor:'#1565A8',backgroundColor:'rgba(21,101,168,0.08)',borderWidth:2,pointBackgroundColor:'#1565A8',pointRadius:4,tension:0.3,fill:true}]
+      },
+      options:{responsive:true,maintainAspectRatio:true,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10}}},y:{beginAtZero:true,ticks:{font:{size:10},callback:v=>'S/ '+v.toLocaleString('es-PE')}}}}
+    });
+  }
 }
 
 // EXCEL
@@ -710,6 +811,7 @@ function renderComisiones(){
     detalleWrap.innerHTML = '';
     return;
   }
+  initCorreo();
 
   // Build summary cards, one per executive
   let html = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:1.5rem">';
@@ -856,6 +958,21 @@ function exportEjecutivo(exec, mes){
   toast('Excel de '+exec+' descargado','success');
 }
 
+
+// EMAIL CORREO
+function copiarCorreo(){
+  const ta=document.getElementById('correo-gerencia');
+  if(!ta)return;
+  navigator.clipboard.writeText(ta.value).then(()=>toast('Correo copiado al portapapeles','success')).catch(()=>{ta.select();document.execCommand('copy');toast('Correo copiado','success');});
+}
+
+function initCorreo(){
+  const mes=gv('com-mes');
+  const ta=document.getElementById('correo-gerencia');
+  if(!ta)return;
+  const fecha=new Date().toLocaleDateString('es-PE',{day:'numeric',month:'long',year:'numeric'});
+  ta.value=`Buenas tardes Romi,\n\nAdjunto el cuadro de comisiones revisado del equipo de call center correspondiente al mes de ${mes||'[mes]'}.\n\nQuedo atento a cualquier duda.\n\nSlds.`;
+}
 
 // TAGS
 function renderTags(){
