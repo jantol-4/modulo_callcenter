@@ -199,8 +199,8 @@ tbody tr:hover td{background:var(--blue-xlight)}
   <div class="card">
     <div class="card-header">Identificación</div>
     <div class="g3">
-      <div class="field"><label>Ejecutivo que reporta <span class="req">*</span></label><select id="f-ejecutivo" onchange="renderMisOps()"><option value="">Seleccionar...</option></select></div>
-      <div class="field"><label>Mes de pago de comisión <span class="req">*</span></label><select id="f-mes"><option value="">Seleccionar...</option></select></div>
+      <div class="field"><label>Ejecutivo que reporta <span class="req">*</span></label><select id="f-ejecutivo" onchange="savePrefs();renderMisOps()"><option value="">Seleccionar...</option></select></div>
+      <div class="field"><label>Mes de pago de comisión <span class="req">*</span></label><select id="f-mes" onchange="savePrefs();renderMisOps()"><option value="">Seleccionar...</option></select></div>
       <div class="field"><label>Fecha de firma de minuta <span class="req">*</span></label><input type="date" id="f-fecha-minuta"></div>
     </div>
   </div>
@@ -430,6 +430,41 @@ let lists={
 const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const YEARS=[2026,2027,2028,2029];
 
+function getMesActual(){
+  const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const now=new Date();
+  return MESES[now.getMonth()]+' '+now.getFullYear();
+}
+
+function savePrefs(){
+  const exec=document.getElementById('f-ejecutivo')?.value||'';
+  const mes=document.getElementById('f-mes')?.value||'';
+  try{localStorage.setItem('abril_pref_exec',exec);localStorage.setItem('abril_pref_mes',mes);}catch(e){}
+}
+
+function restorePrefs(){
+  // Restore saved ejecutivo
+  const savedExec=localStorage.getItem('abril_pref_exec')||'';
+  const savedMes=localStorage.getItem('abril_pref_mes')||getMesActual();
+  const selExec=document.getElementById('f-ejecutivo');
+  const selMes=document.getElementById('f-mes');
+  if(selExec&&savedExec){
+    // Check option exists
+    const opt=[...selExec.options].find(o=>o.value===savedExec);
+    if(opt) selExec.value=savedExec;
+  }
+  if(selMes&&savedMes){
+    const opt=[...selMes.options].find(o=>o.value===savedMes);
+    if(opt) selMes.value=savedMes;
+    else{
+      // Default to mes actual
+      const mesActual=getMesActual();
+      const optActual=[...selMes.options].find(o=>o.value===mesActual);
+      if(optActual) selMes.value=mesActual;
+    }
+  }
+}
+
 function init(){
   document.getElementById('current-date').textContent=new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 
@@ -467,10 +502,10 @@ function init(){
     } else {
       try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
     }
-    populateAll();renderTags();updateStorageInfo();renderMisOps();
+    populateAll();restorePrefs();renderTags();updateStorageInfo();renderMisOps();
   }, err=>{
     try{const l=localStorage.getItem(K.lists);if(l)lists=JSON.parse(l);}catch(e){}
-    populateAll();renderTags();updateStorageInfo();renderMisOps();
+    populateAll();restorePrefs();renderTags();updateStorageInfo();renderMisOps();
   });
 }
 
@@ -626,7 +661,8 @@ function addRow(){
 }
 function clearForm(){
   ['f-cliente','f-unidad','f-porcentaje','f-valor','f-monto-recibido','f-crm','f-obs','f-fecha-minuta'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  ['f-ejecutivo','f-proyecto','f-hito','f-asesor','f-dorms','f-estac','f-modalidad','f-mes','f-moneda-valor','f-moneda-monto','f-moneda'].forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
+  // Keep ejecutivo and mes — executivo fills multiple ops per session
+  ['f-proyecto','f-hito','f-asesor','f-dorms','f-estac','f-modalidad','f-moneda-valor','f-moneda-monto','f-moneda'].forEach(id=>{const el=document.getElementById(id);if(el)el.selectedIndex=0;});
 }
 function deleteRow(id){
   if(!confirm('¿Eliminar esta operación?'))return;
