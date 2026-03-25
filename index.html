@@ -1387,7 +1387,7 @@ function populateAll(){
 
 // ── TABS ──
 function showTab(name,btn){
-  ['registro','historial','reporte','comisiones','config'].forEach(t=>document.getElementById('tab-'+t).classList.add('hidden'));
+  ['registro','historial','reporte','comisiones','auditoria','config'].forEach(t=>document.getElementById('tab-'+t).classList.add('hidden'));
   document.querySelectorAll('.nav-tab').forEach(b=>b.classList.remove('active'));
   document.getElementById('tab-'+name).classList.remove('hidden');
   if(btn)btn.classList.add('active');
@@ -1424,7 +1424,7 @@ function enterAdmin(){
 function logoutAdmin(){
   isAdmin=false;
   document.querySelectorAll('.admin-only').forEach(el=>el.classList.add('hidden'));
-  ['historial','reporte','comisiones','config'].forEach(t=>document.getElementById('tab-'+t).classList.add('hidden'));
+  ['historial','reporte','comisiones','auditoria','config'].forEach(t=>document.getElementById('tab-'+t).classList.add('hidden'));
   document.getElementById('admin-badge').classList.add('hidden');
   document.getElementById('btn-admin-label').textContent='Modo admin';
   showTab('registro',document.querySelector('.nav-tab[data-tab="registro"]'));
