@@ -257,6 +257,10 @@ tbody tr:hover td{background:var(--blue-xlight)}
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
     Comisiones gerencia
   </button>
+  <button class="nav-tab hidden admin-only" data-tab="auditoria" onclick="showTab('auditoria',this)">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+    Auditoría
+  </button>
   <button class="nav-tab hidden admin-only" data-tab="config" onclick="showTab('config',this)">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     Configuración
@@ -405,6 +409,31 @@ tbody tr:hover td{background:var(--blue-xlight)}
   </div>
 </div>
 
+<!-- TAB AUDITORÍA (solo admin) -->
+<div id="tab-auditoria" class="hidden">
+  <div class="filter-bar">
+    <label>Usuario</label>
+    <select id="aud-usuario" onchange="renderAuditoria()"><option value="">Todos</option></select>
+    <label>Acción</label>
+    <select id="aud-accion" onchange="renderAuditoria()">
+      <option value="">Todas</option>
+      <option>CREAR_OPERACION</option>
+      <option>EDITAR_OPERACION</option>
+      <option>ELIMINAR_OPERACION</option>
+      <option>LOGIN</option>
+      <option>CREAR_USUARIO</option>
+      <option>ELIMINAR_USUARIO</option>
+    </select>
+    <input type="date" id="aud-fecha" onchange="renderAuditoria()" style="font-family:var(--font);font-size:12.5px;padding:6px 10px;border:1px solid var(--g300);border-radius:var(--r-sm);background:var(--g50);outline:none">
+    <div class="filter-count" id="aud-count">— eventos</div>
+    <button class="btn btn-success btn-sm" onclick="exportAuditoria()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Exportar
+    </button>
+  </div>
+  <div class="table-wrap"><div class="table-scroll"><div id="auditoria-body"><div class="empty"><p>Cargando registros...</p></div></div></div></div>
+</div>
+
 <!-- TAB CONFIG (solo admin) -->
 <div id="tab-config" class="hidden">
   <!-- USUARIOS -->
@@ -454,8 +483,17 @@ tbody tr:hover td{background:var(--blue-xlight)}
     <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-ghost btn-sm" onclick="exportBackup()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Exportar backup completo
+        Backup Excel
       </button>
+      <button class="btn btn-ghost btn-sm" onclick="exportBackupJSON()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Backup JSON (restaurable)
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="importBackupJSON()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Restaurar desde JSON
+      </button>
+      <input type="file" id="json-import-input" accept=".json" style="display:none" onchange="handleJSONImport(event)">
       <button class="btn btn-sm" style="background:#fff;border:1px solid var(--red);color:var(--red)" onclick="confirmClearAll()">Eliminar todas las operaciones</button>
     </div>
   </div>
@@ -634,6 +672,7 @@ function onLoginSuccess(){
   document.getElementById('user-name-display').textContent = nombre;
   document.getElementById('user-avatar').textContent = nombre.charAt(0).toUpperCase();
   document.getElementById('current-date').textContent = new Date().toLocaleDateString('es-PE',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+  logAudit('LOGIN', `Acceso desde ${navigator.userAgent.substring(0,60)}`);
   initData();
 }
 
@@ -710,11 +749,30 @@ function getMesActual(){
 }
 
 // ── ROWS ──
+// ── AUDITORÍA ──
+function logAudit(accion, detalle){
+  if(!currentUser||!currentUserProfile) return;
+  const entry = {
+    uid: currentUser.uid,
+    usuario: currentUserProfile.nombre,
+    email: currentUser.email,
+    accion,
+    detalle,
+    timestamp: new Date().toISOString(),
+    fecha: new Date().toLocaleDateString('es-PE'),
+    hora: new Date().toLocaleTimeString('es-PE')
+  };
+  db.ref('abril_auditoria').push(entry).catch(e=>console.warn('Audit error',e));
+}
+
 function pushRowToFirebase(row){
   db.ref('abril_operaciones/'+row.id).set(row).catch(e=>console.warn(e));
+  logAudit('CREAR_OPERACION', `Cliente: ${row.cliente} | Proyecto: ${row.proyecto} | Mes: ${row.mes} | Valor: ${row.moneda_valor} ${row.valor}`);
 }
 function deleteRowFromFirebase(id){
+  const row = rows.find(r=>r.id===id);
   db.ref('abril_operaciones/'+id).remove().catch(e=>console.warn(e));
+  if(row) logAudit('ELIMINAR_OPERACION', `Cliente: ${row.cliente} | Proyecto: ${row.proyecto} | ID: ${id}`);
 }
 
 // ── MIS OPERACIONES ──
@@ -857,7 +915,8 @@ function saveEdit(){
   };
 
   rows[idx] = updated;
-  pushRowToFirebase(updated);
+  db.ref('abril_operaciones/'+updated.id).set(updated).catch(e=>console.warn(e));
+  logAudit('EDITAR_OPERACION', `Cliente: ${updated.cliente} | Proyecto: ${updated.proyecto} | ID: ${updated.id}`);
   closeModal('edit-modal');
   renderMisOps();
   if(isAdmin) renderHistorial();
@@ -987,7 +1046,47 @@ function rowArr(r,i){return[i+1,r.ejecutivo,r.mes,r.fecha_minuta||'',r.cliente,r
 function makeWB(data,sheet){const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet([HDR,...data]);ws['!cols']=COLS.map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,ws,sheet);return wb;}
 function exportHistorial(){const fr=filteredRows();if(!fr.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(fr.map(rowArr),'Historial'),'Abril_Comisiones_Historial.xlsx');toast('Excel descargado','success');}
 function exportReporte(){const mes=gv('rep-mes'),fr=rows.filter(r=>r.mes===mes);if(!fr.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(fr.map(rowArr),mes),`Abril_Comisiones_${mes.replace(' ','_')}.xlsx`);toast('Reporte descargado','success');}
-function exportBackup(){if(!rows.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(rows.map(rowArr),'Backup'),'Abril_Backup_Completo.xlsx');toast('Backup descargado','success');}
+function exportBackup(){if(!rows.length){toast('Sin datos','error');return;}XLSX.writeFile(makeWB(rows.map(rowArr),'Backup'),'Abril_Backup_Completo.xlsx');toast('Backup Excel descargado','success');}
+
+function exportBackupJSON(){
+  db.ref('/').once('value').then(snap=>{
+    const data = snap.val();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'Abril_Backup_'+new Date().toISOString().substring(0,10)+'.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    logAudit('BACKUP_JSON', 'Backup completo descargado desde Firebase');
+    toast('Backup JSON descargado','success');
+  }).catch(()=>toast('Error al descargar backup','error'));
+}
+
+function importBackupJSON(){
+  if(!confirm('Restaurar un backup sobreescribirá TODOS los datos actuales. ¿Continuar?')) return;
+  document.getElementById('json-import-input').click();
+}
+
+function handleJSONImport(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const data = JSON.parse(evt.target.result);
+      db.ref('/').set(data).then(()=>{
+        logAudit('RESTAURAR_BACKUP', `Archivo: ${file.name}`);
+        toast('Backup restaurado correctamente','success');
+      }).catch(()=>toast('Error al restaurar','error'));
+    } catch(err){
+      toast('Archivo JSON inválido','error');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
 
 // ── COMISIONES GERENCIA ──
 function getPctComision(n){return n>=11?0.0012:n>=6?0.0010:0.00075;}
@@ -1166,6 +1265,71 @@ function deleteUser(uid,nombre){
   });
 }
 
+// ── AUDITORÍA ──
+let auditRows = [];
+function loadAuditoria(){
+  db.ref('abril_auditoria').limitToLast(500).once('value').then(snap=>{
+    const data = snap.val();
+    auditRows = data ? Object.values(data).reverse() : [];
+    // Populate usuario filter
+    const usuarios = [...new Set(auditRows.map(r=>r.usuario))].sort();
+    const sel = document.getElementById('aud-usuario');
+    if(sel){
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Todos</option>';
+      usuarios.forEach(u=>{const o=document.createElement('option');o.value=o.textContent=u;if(u===cur)o.selected=true;sel.appendChild(o);});
+    }
+    renderAuditoria();
+  });
+}
+function renderAuditoria(){
+  const fu = (document.getElementById('aud-usuario')?.value||'');
+  const fa = (document.getElementById('aud-accion')?.value||'');
+  const ff = (document.getElementById('aud-fecha')?.value||'');
+  const filtered = auditRows.filter(r=>
+    (!fu||r.usuario===fu) &&
+    (!fa||r.accion===fa) &&
+    (!ff||r.timestamp?.startsWith(ff))
+  );
+  document.getElementById('aud-count').textContent = filtered.length+' eventos';
+  const c = document.getElementById('auditoria-body');
+  if(!c) return;
+  if(!filtered.length){c.innerHTML='<div class="empty"><p>Sin registros para los filtros seleccionados.</p></div>';return;}
+  const colorMap = {
+    CREAR_OPERACION:'pill-green',
+    EDITAR_OPERACION:'pill-blue',
+    ELIMINAR_OPERACION:'',
+    LOGIN:'pill-gray',
+    CREAR_USUARIO:'pill-green',
+    ELIMINAR_USUARIO:''
+  };
+  let h='<table><thead><tr><th>#</th><th>Fecha</th><th>Hora</th><th>Usuario</th><th>Acción</th><th>Detalle</th></tr></thead><tbody>';
+  filtered.forEach((r,i)=>{
+    const pill = colorMap[r.accion]||'';
+    const pillStyle = pill ? `class="pill ${pill}"` : `style="background:var(--red-light);color:var(--red);font-size:11px;font-weight:500;padding:2px 8px;border-radius:20px;display:inline-block"`;
+    h+=`<tr>
+      <td class="td-muted">${i+1}</td>
+      <td class="td-muted">${r.fecha||r.timestamp?.substring(0,10)||'—'}</td>
+      <td class="td-muted">${r.hora||r.timestamp?.substring(11,19)||'—'}</td>
+      <td><span class="pill pill-blue">${r.usuario||r.email||'—'}</span></td>
+      <td><span ${pillStyle}>${r.accion}</span></td>
+      <td style="max-width:320px;white-space:normal;font-size:12px;color:var(--g600)">${r.detalle||'—'}</td>
+    </tr>`;
+  });
+  h+='</tbody></table>';
+  c.innerHTML=h;
+}
+function exportAuditoria(){
+  if(!auditRows.length){toast('Sin datos','error');return;}
+  const hdr=['#','Fecha','Hora','Usuario','Email','Acción','Detalle','Timestamp'];
+  const data=auditRows.map((r,i)=>[i+1,r.fecha||'',r.hora||'',r.usuario||'',r.email||'',r.accion||'',r.detalle||'',r.timestamp||'']);
+  const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet([hdr,...data]);
+  ws['!cols']=[4,12,10,20,26,22,50,22].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws,'Auditoría');
+  XLSX.writeFile(wb,'Abril_Auditoria_'+new Date().toISOString().substring(0,10)+'.xlsx');
+  toast('Auditoría exportada','success');
+}
+
 // ── TAGS / LISTAS ──
 function saveLists(){
   db.ref('abril_listas').set(lists).catch(e=>console.warn(e));
@@ -1235,6 +1399,7 @@ function showTab(name,btn){
     if(comMes){const cur=comMes.value;comMes.innerHTML=buildM(true);comMes.value=cur;}
     renderComisiones();
   }
+  if(name==='auditoria'){loadAuditoria();}
   if(name==='config'){renderTags();loadUserList();}
 }
 
